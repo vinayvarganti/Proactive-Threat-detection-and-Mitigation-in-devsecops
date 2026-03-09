@@ -11,14 +11,20 @@ export interface AIFixProposal {
 }
 
 export class GeminiService {
-  private model: string = 'gemini-1.5-flash';
-  private maxRetries: number = 3;
-  private baseDelay: number = 1000; // 1 second
+  private primaryModel: string = 'gemini-1.5-flash';
+  private fallbackModel: string = 'gemini-1.5-flash-8b'; // Smaller, faster model as fallback
+  private maxRetries: number = 2; // Reduced retries to fail faster
+  private baseDelay: number = 2000; // 2 seconds
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY environment variable is not set');
+    }
+    
+    // Allow model override via environment variable
+    if (process.env.GEMINI_MODEL) {
+      this.primaryModel = process.env.GEMINI_MODEL;
     }
   }
 
@@ -30,86 +36,104 @@ export class GeminiService {
   }
 
   /**
+   * Try to generate content with a specific model
+   */
+  private async tryGenerateWithModel(
+    model: string,
+    prompt: string,
+    apiKey: string
+  ): Promise<string> {
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        contents: [
+          {
+            parts: [
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+        }
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey
+        },
+        timeout: 30000 // 30 second timeout
+      }
+    );
+
+    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!text) {
+      throw new Error('No content returned from AI');
+    }
+
+    return text;
+  }
+
+  /**
    * Generate a fix proposal for a vulnerability using Gemini AI
    */
   async generateFix(
     vulnerability: IVulnerability,
     codeContext: string
   ): Promise<AIFixProposal> {
+    const apiKey = process.env.GEMINI_API_KEY!;
+    const prompt = this.buildPrompt(vulnerability, codeContext);
     let lastError: Error | null = null;
 
-    // Try with retries and exponential backoff
+    // Try primary model with retries
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        const prompt = this.buildPrompt(vulnerability, codeContext);
-        
-        const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`,
-          {
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              topK: 40,
-              topP: 0.95,
-              maxOutputTokens: 2048,
-            }
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-goog-api-key': apiKey
-            },
-            timeout: 30000 // 30 second timeout
-          }
-        );
-
-        const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!text) {
-          throw new Error('Failed to generate fix: No content returned from AI');
-        }
-
+        console.log(`Attempting to generate fix with ${this.primaryModel} (attempt ${attempt + 1}/${this.maxRetries})`);
+        const text = await this.tryGenerateWithModel(this.primaryModel, prompt, apiKey);
         return this.parseResponse(text, vulnerability);
       } catch (error) {
         lastError = error as Error;
         
-        // Check if it's a rate limit or high demand error
         if (axios.isAxiosError(error)) {
           const status = error.response?.status;
           const errorMessage = error.response?.data?.error?.message || error.message;
           
-          // If it's a rate limit (429) or service unavailable (503), retry
+          console.error(`Primary model error (${status}): ${errorMessage}`);
+          
+          // If it's a rate limit (429) or service unavailable (503), retry with delay
           if ((status === 429 || status === 503 || errorMessage.includes('high demand')) && attempt < this.maxRetries - 1) {
-            const delay = this.baseDelay * Math.pow(2, attempt); // Exponential backoff
-            console.log(`Gemini API rate limited or high demand. Retrying in ${delay}ms... (attempt ${attempt + 1}/${this.maxRetries})`);
+            const delay = this.baseDelay * Math.pow(2, attempt);
+            console.log(`Retrying in ${delay}ms...`);
             await this.sleep(delay);
             continue;
           }
-          
-          throw new Error(
-            `Failed to generate AI fix: ${errorMessage}. ${attempt < this.maxRetries - 1 ? 'Please try again in a few moments.' : 'Please try again later.'}`
-          );
         }
         
-        throw new Error(
-          `Failed to generate AI fix: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
+        // If we've exhausted retries on primary model, break to try fallback
+        break;
       }
     }
 
-    // If all retries failed
-    throw new Error(
-      `Failed to generate AI fix after ${this.maxRetries} attempts: ${lastError?.message || 'Unknown error'}. The AI service is currently experiencing high demand. Please try again later.`
-    );
+    // Try fallback model if primary failed
+    console.log(`Primary model failed, trying fallback model: ${this.fallbackModel}`);
+    try {
+      const text = await this.tryGenerateWithModel(this.fallbackModel, prompt, apiKey);
+      return this.parseResponse(text, vulnerability);
+    } catch (fallbackError) {
+      console.error(`Fallback model also failed:`, fallbackError);
+      
+      // Return a more helpful error message
+      const errorMsg = lastError?.message || 'Unknown error';
+      throw new Error(
+        `AI service is currently unavailable. Both primary (${this.primaryModel}) and fallback (${this.fallbackModel}) models are experiencing issues. ${errorMsg.includes('high demand') ? 'The service is experiencing high demand.' : ''} Please try again in a few minutes.`
+      );
+    }
   }
 
   /**
@@ -208,7 +232,7 @@ Important:
    * Get the model name being used
    */
   getModelName(): string {
-    return this.model;
+    return `${this.primaryModel} (fallback: ${this.fallbackModel})`;
   }
 }
 
