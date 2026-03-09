@@ -39,8 +39,8 @@ RUN npm ci
 # Copy application code
 COPY . .
 
-# Build TypeScript
-RUN npm run build
+# Build TypeScript with production config
+RUN npx tsc -p tsconfig.prod.json
 
 # Remove devDependencies after build to reduce image size
 RUN npm prune --production
