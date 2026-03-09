@@ -19,18 +19,20 @@ declare global {
 /**
  * Middleware to verify JWT token from Authorization header
  */
-export const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+export const authenticateJWT = (req: Request, res: Response, next: NextFunction): void => {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
-      return res.status(401).json({ error: 'No authorization header provided' });
+      res.status(401).json({ error: 'No authorization header provided' });
+      return;
     }
 
     // Extract token from "Bearer <token>"
     const parts = authHeader.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      return res.status(401).json({ error: 'Invalid authorization header format. Use: Bearer <token>' });
+      res.status(401).json({ error: 'Invalid authorization header format. Use: Bearer <token>' });
+      return;
     }
 
     const token = parts[1];
@@ -48,7 +50,8 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
     next();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed';
-    return res.status(401).json({ error: message });
+    res.status(401).json({ error: message });
+    return;
   }
 };
 
