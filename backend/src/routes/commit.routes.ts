@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth } from '../middleware/session';
+import { authenticateJWT } from '../middleware/jwtAuth';
 import { GitHubCommitService, FileChange } from '../services/GitHubCommitService';
 import { AuthenticationService } from '../services/AuthenticationService';
 import VulnerabilityModel from '../models/Vulnerability';
@@ -16,9 +16,9 @@ const authService = new AuthenticationService();
  * Commit fixes to GitHub repository
  * Body: { repositoryId, vulnerabilityIds, files, branch? }
  */
-router.post('/', requireAuth, async (req: Request, res: Response) => {
+router.post('/', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userId!;
+    const userId = req.user!.githubId;
     const { repositoryId, vulnerabilityIds, files, branch } = req.body;
 
     // Validate input
@@ -212,9 +212,9 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
  * GET /api/commits/:id/status
  * Get the status of a commit
  */
-router.get('/:id/status', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/status', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userId!;
+    const userId = req.user!.githubId;
     const commitId = req.params.id;
 
     // Find the commit

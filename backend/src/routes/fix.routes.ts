@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth } from '../middleware/session';
+import { authenticateJWT } from '../middleware/jwtAuth';
 import { FixManager } from '../services/FixManager';
 import VulnerabilityModel from '../models/Vulnerability';
 import ScanReportModel from '../models/ScanReport';
@@ -16,9 +16,9 @@ const authService = new AuthenticationService();
  * Submit a manual fix for a vulnerability
  * Body: { vulnerabilityId, fixedCode, repositoryFullName }
  */
-router.post('/manual', requireAuth, async (req: Request, res: Response) => {
+router.post('/manual', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const { vulnerabilityId, fixedCode, repositoryFullName } = req.body;
 
     // Validate input
@@ -146,9 +146,9 @@ router.post('/manual', requireAuth, async (req: Request, res: Response) => {
  * Request an AI-generated fix for a vulnerability
  * Body: { vulnerabilityId, codeContext }
  */
-router.post('/ai', requireAuth, async (req: Request, res: Response) => {
+router.post('/ai', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const { vulnerabilityId, codeContext } = req.body;
 
     // Validate input
@@ -250,9 +250,9 @@ router.post('/ai', requireAuth, async (req: Request, res: Response) => {
  * Approve and apply an AI-generated fix
  * Body: { repositoryFullName }
  */
-router.post('/ai/:id/approve', requireAuth, async (req: Request, res: Response) => {
+router.post('/ai/:id/approve', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const proposalId = req.params.id;
     const { repositoryFullName } = req.body;
 
@@ -395,7 +395,7 @@ router.post('/ai/:id/approve', requireAuth, async (req: Request, res: Response) 
  * POST /api/fixes/ai/:id/reject
  * Reject an AI-generated fix
  */
-router.post('/ai/:id/reject', requireAuth, async (req: Request, res: Response) => {
+router.post('/ai/:id/reject', authenticateJWT, async (req: Request, res: Response) => {
   try {
     const proposalId = req.params.id;
 

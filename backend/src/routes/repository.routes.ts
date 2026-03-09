@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { RepositoryManager } from '../services/RepositoryManager';
 import { ScanOrchestrator } from '../services/ScanOrchestrator';
-import { requireAuth } from '../middleware/session';
+import { authenticateJWT } from '../middleware/jwtAuth';
 import { AuthenticationService } from '../services/AuthenticationService';
 import RepositoryModel from '../models/Repository';
 import ScanReportModel from '../models/ScanReport';
@@ -17,9 +17,9 @@ const scanQueue = getScanQueue();
  * GET /api/repositories
  * List user's repositories from GitHub
  */
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+router.get('/', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
 
     // Get access token from database
     const accessToken = await authService.getToken(githubId);
@@ -64,9 +64,9 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
  * POST /api/repositories/:id/scan
  * Initiate a security scan for a repository
  */
-router.post('/:id/scan', requireAuth, async (req: Request, res: Response) => {
+router.post('/:id/scan', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const repoId = req.params.id;
     const { fullName } = req.body;
 
@@ -217,9 +217,9 @@ router.post('/:id/scan', requireAuth, async (req: Request, res: Response) => {
  * POST /api/repositories/scan/batch
  * Initiate sequential scans for multiple repositories
  */
-router.post('/scan/batch', requireAuth, async (req: Request, res: Response) => {
+router.post('/scan/batch', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const { repositories } = req.body;
 
     if (!repositories || !Array.isArray(repositories) || repositories.length === 0) {
@@ -293,7 +293,7 @@ router.post('/scan/batch', requireAuth, async (req: Request, res: Response) => {
  * GET /api/repositories/scan/queue/status
  * Get the current status of the scan queue
  */
-router.get('/scan/queue/status', requireAuth, async (req: Request, res: Response) => {
+router.get('/scan/queue/status', authenticateJWT, async (req: Request, res: Response) => {
   try {
     const status = scanQueue.getStatus();
     
@@ -318,7 +318,7 @@ router.get('/scan/queue/status', requireAuth, async (req: Request, res: Response
  * GET /api/repositories/scan/job/:jobId
  * Get the status of a specific scan job
  */
-router.get('/scan/job/:jobId', requireAuth, async (req: Request, res: Response) => {
+router.get('/scan/job/:jobId', authenticateJWT, async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const job = scanQueue.getJob(jobId);
@@ -357,9 +357,9 @@ router.get('/scan/job/:jobId', requireAuth, async (req: Request, res: Response) 
  * GET /api/repositories/:id/files
  * Get file tree for a repository
  */
-router.get('/:id/files', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/files', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const repoId = req.params.id;
     const { fullName } = req.query;
 

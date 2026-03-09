@@ -37,6 +37,35 @@ export interface ErrorResponse {
 
 class AuthService {
   private baseURL = '/api/auth';
+  private TOKEN_KEY = 'jwt_token';
+
+  /**
+   * Store JWT token in localStorage
+   */
+  setToken(token: string): void {
+    localStorage.setItem(this.TOKEN_KEY, token);
+  }
+
+  /**
+   * Get JWT token from localStorage
+   */
+  getToken(): string | null {
+    return localStorage.getItem(this.TOKEN_KEY);
+  }
+
+  /**
+   * Remove JWT token from localStorage
+   */
+  clearToken(): void {
+    localStorage.removeItem(this.TOKEN_KEY);
+  }
+
+  /**
+   * Check if user has a valid token
+   */
+  hasToken(): boolean {
+    return !!this.getToken();
+  }
 
   /**
    * Initiates GitHub OAuth flow by getting the authorization URL
@@ -55,42 +84,42 @@ class AuthService {
   }
 
   /**
-   * Handles OAuth callback by exchanging code for token
+   * Handles OAuth callback by extracting JWT token from URL
    */
-  async handleOAuthCallback(code: string): Promise<User> {
-    try {
-      const response = await axios.get<AuthResponse>(`${this.baseURL}/github/callback`, {
-        params: { code }
-      });
-      return response.data.user;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response) {
-        const errorData = error.response.data as ErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to complete authentication');
-      }
-      throw new Error('Failed to complete authentication');
+  handleOAuthCallback(): { token: string; username: string } | null {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const username = urlParams.get('username');
+
+    if (token && username) {
+      this.setToken(token);
+      return { token, username: decodeURIComponent(username) };
     }
+
+    return null;
   }
 
   /**
    * Logs out the current user
    */
   async logout(): Promise<void> {
-    try {
-      await axios.post(`${this.baseURL}/logout`);
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response) {
-        const errorData = error.response.data as ErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to logout');
-      }
-      throw new Error('Failed to logout');
-    }
+    this.clearToken();
   }
 
   /**
    * Gets the current authentication status
    */
   async getAuthStatus(): Promise<AuthStatus> {
+    const token = this.getToken();
+    
+    if (!token) {
+      return {
+        isAuthenticated: false,
+        username: null,
+        avatarUrl: null
+      };
+    }
+
     try {
       const response = await axios.get<{ isAuthenticated: boolean; user: User | null }>(`${this.baseURL}/status`);
       
@@ -102,13 +131,16 @@ class AuthService {
         };
       }
       
+      // Token is invalid, clear it
+      this.clearToken();
       return {
         isAuthenticated: false,
         username: null,
         avatarUrl: null
       };
     } catch (error) {
-      // If status check fails, assume not authenticated
+      // If status check fails, clear token and assume not authenticated
+      this.clearToken();
       return {
         isAuthenticated: false,
         username: null,

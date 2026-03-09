@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth } from '../middleware/session';
+import { authenticateJWT } from '../middleware/jwtAuth';
 import ScanReportModel from '../models/ScanReport';
 import VulnerabilityModel from '../models/Vulnerability';
 
@@ -10,9 +10,9 @@ const router = Router();
  * List scan reports for the authenticated user
  * Query params: repositoryId (optional)
  */
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+router.get('/', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const { repositoryId } = req.query;
 
     // Get the MongoDB User document to get the ObjectId
@@ -89,9 +89,9 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
  * GET /api/reports/:id
  * Get a specific scan report with full details
  */
-router.get('/:id', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const githubId = req.session.userId!;
+    const githubId = req.user!.githubId;
     const reportId = req.params.id;
 
     // Get the MongoDB User document to get the ObjectId

@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { AuthenticationService } from '../services/AuthenticationService';
-import { requireAuth } from '../middleware/session';
+import { JWTService } from '../services/JWTService';
+import { authenticateJWT } from '../middleware/jwtAuth';
+import axios from 'axios';
 
 const router = Router();
 const authService = new AuthenticationService();
+const jwtService = new JWTService();
 
 /**
  * POST /api/auth/github/initiate
@@ -39,7 +42,6 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     const { code } = req.query;
 
     if (!code || typeof code !== 'string') {
-      // Redirect to frontend with error
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       res.redirect(`${frontendUrl}?auth=error&message=Authorization code is missing`);
       return;
@@ -48,8 +50,7 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     // Exchange code for token
     const accessToken = await authService.exchangeCodeForToken(code);
 
-    // Get user info from GitHub to get the user ID
-    const axios = require('axios');
+    // Get user info from GitHub
     const userResponse = await axios.get('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${accessToken.token}`,
@@ -66,23 +67,17 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       avatarUrl: githubUser.avatar_url || ''
     });
 
-    // Create session
-    req.session.userId = githubUser.id.toString();
-    req.session.username = githubUser.login;
-    req.session.tokenExpiresAt = accessToken.expiresAt.toISOString();
-
-    // Save session before redirecting
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-      }
-      
-      // Redirect to frontend with success
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}?auth=success&username=${encodeURIComponent(githubUser.login)}`);
+    // Generate JWT token
+    const jwtToken = jwtService.generateToken({
+      userId: githubUser.id.toString(),
+      githubId: githubUser.id.toString(),
+      username: githubUser.login
     });
+
+    // Redirect to frontend with JWT token
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}?auth=success&token=${encodeURIComponent(jwtToken)}&username=${encodeURIComponent(githubUser.login)}`);
   } catch (error) {
-    // Redirect to frontend with error
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const errorMessage = error instanceof Error ? error.message : 'Failed to complete OAuth flow';
     res.redirect(`${frontendUrl}?auth=error&message=${encodeURIComponent(errorMessage)}`);
@@ -91,63 +86,39 @@ router.get('/github/callback', async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/logout
- * Logs out the user by invalidating session and revoking tokens
+ * Logs out the user by revoking tokens
  */
-router.post('/logout', requireAuth, async (req: Request, res: Response) => {
+router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userId;
+    const userId = req.user?.userId;
 
     if (!userId) {
       res.status(400).json({
         error: {
-          code: 'NO_SESSION',
-          message: 'No active session to logout',
+          code: 'NO_USER',
+          message: 'No authenticated user',
           retryable: false
         },
-        timestamp: new Date(),
-        requestId: req.headers['x-request-id'] || 'unknown'
+        timestamp: new Date()
       });
       return;
     }
 
-    // Revoke token from database using AuthenticationService
+    // Revoke token from database
     await authService.revokeToken(userId);
 
-    // Destroy session
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Session destruction error:', err);
-        res.status(500).json({
-          error: {
-            code: 'LOGOUT_FAILED',
-            message: 'Failed to destroy session',
-            retryable: true,
-            suggestedAction: 'Try logging out again'
-          },
-          timestamp: new Date(),
-          requestId: req.headers['x-request-id'] || 'unknown'
-        });
-        return;
-      }
-
-      // Clear session cookie
-      res.clearCookie('connect.sid');
-
-      res.json({
-        success: true,
-        message: 'Logout successful'
-      });
+    res.json({
+      success: true,
+      message: 'Logout successful'
     });
   } catch (error) {
     res.status(500).json({
       error: {
         code: 'LOGOUT_ERROR',
         message: error instanceof Error ? error.message : 'An error occurred during logout',
-        retryable: true,
-        suggestedAction: 'Try logging out again'
+        retryable: true
       },
-      timestamp: new Date(),
-      requestId: req.headers['x-request-id'] || 'unknown'
+      timestamp: new Date()
     });
   }
 });
@@ -156,21 +127,14 @@ router.post('/logout', requireAuth, async (req: Request, res: Response) => {
  * GET /api/auth/status
  * Returns the current authentication status
  */
-router.get('/status', (req: Request, res: Response) => {
-  if (req.session && req.session.userId) {
-    res.json({
-      isAuthenticated: true,
-      user: {
-        id: req.session.userId,
-        username: req.session.username
-      }
-    });
-  } else {
-    res.json({
-      isAuthenticated: false,
-      user: null
-    });
-  }
+router.get('/status', authenticateJWT, (req: Request, res: Response) => {
+  res.json({
+    isAuthenticated: true,
+    user: {
+      id: req.user?.userId,
+      username: req.user?.username
+    }
+  });
 });
 
 export default router;

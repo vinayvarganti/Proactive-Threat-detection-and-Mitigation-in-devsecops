@@ -12,7 +12,11 @@ console.log('VITE_API_BASE_URL env var:', import.meta.env.VITE_API_BASE_URL);
 // Request interceptor for adding common headers
 axios.interceptors.request.use(
   (config) => {
-    // Add any common headers here if needed
+    // Add JWT token to Authorization header if available
+    const token = localStorage.getItem('jwt_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {

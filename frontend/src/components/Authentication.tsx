@@ -22,27 +22,30 @@ const Authentication: React.FC<AuthenticationProps> = ({ onAuthChange }) => {
 
   // Handle OAuth callback on mount
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const authResult = urlParams.get('auth');
-    const username = urlParams.get('username');
-    const errorMessage = urlParams.get('message');
-
-    if (authResult === 'success' && username) {
-      // Authentication successful
+    const callbackResult = authService.handleOAuthCallback();
+    
+    if (callbackResult) {
+      // Authentication successful - token stored in localStorage
       setAuthStatus({
         isAuthenticated: true,
-        username: decodeURIComponent(username),
+        username: callbackResult.username,
         avatarUrl: null
       });
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
       // Refresh auth status to get full user info
       checkAuthStatus();
-    } else if (authResult === 'error') {
-      // Authentication failed
-      setError(errorMessage ? decodeURIComponent(errorMessage) : 'Authentication failed');
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+    } else {
+      // Check for error in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const authResult = urlParams.get('auth');
+      const errorMessage = urlParams.get('message');
+      
+      if (authResult === 'error') {
+        setError(errorMessage ? decodeURIComponent(errorMessage) : 'Authentication failed');
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
   }, []);
 
@@ -76,31 +79,6 @@ const Authentication: React.FC<AuthenticationProps> = ({ onAuthChange }) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initiate login');
       console.error('Login error:', err);
-    }
-  };
-
-  const handleOAuthCallback = async (code: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const user = await authService.handleOAuthCallback(code);
-      
-      setAuthStatus({
-        isAuthenticated: true,
-        username: user.username,
-        avatarUrl: user.avatarUrl
-      });
-
-      // Clean up URL by removing the code parameter
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
-      console.error('OAuth callback error:', err);
-      
-      // Clean up URL even on error
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } finally {
-      setLoading(false);
     }
   };
 
