@@ -55,7 +55,7 @@ app.use(session({
 }));
 
 // Debug middleware to log session info
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   console.log('Session ID:', req.sessionID);
   console.log('Session data:', req.session);
