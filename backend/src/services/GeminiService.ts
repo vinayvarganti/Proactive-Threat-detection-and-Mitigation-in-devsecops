@@ -11,7 +11,9 @@ export interface AIFixProposal {
 }
 
 export class GeminiService {
-  private model: string = 'gemini-flash-latest';
+  private model: string = 'gemini-1.5-flash';
+  private maxRetries: number = 3;
+  private baseDelay: number = 1000; // 1 second
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -21,54 +23,93 @@ export class GeminiService {
   }
 
   /**
+   * Sleep for a specified duration
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
    * Generate a fix proposal for a vulnerability using Gemini AI
    */
   async generateFix(
     vulnerability: IVulnerability,
     codeContext: string
   ): Promise<AIFixProposal> {
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      const prompt = this.buildPrompt(vulnerability, codeContext);
-      
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`,
-        {
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt
-                }
-              ]
+    let lastError: Error | null = null;
+
+    // Try with retries and exponential backoff
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        const prompt = this.buildPrompt(vulnerability, codeContext);
+        
+        const response = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`,
+          {
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 2048,
             }
-          ]
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-goog-api-key': apiKey
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-goog-api-key': apiKey
+            },
+            timeout: 30000 // 30 second timeout
           }
+        );
+
+        const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!text) {
+          throw new Error('Failed to generate fix: No content returned from AI');
         }
-      );
 
-      const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!text) {
-        throw new Error('Failed to generate fix: No content returned from AI');
-      }
-
-      return this.parseResponse(text, vulnerability);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
+        return this.parseResponse(text, vulnerability);
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Check if it's a rate limit or high demand error
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+          const errorMessage = error.response?.data?.error?.message || error.message;
+          
+          // If it's a rate limit (429) or service unavailable (503), retry
+          if ((status === 429 || status === 503 || errorMessage.includes('high demand')) && attempt < this.maxRetries - 1) {
+            const delay = this.baseDelay * Math.pow(2, attempt); // Exponential backoff
+            console.log(`Gemini API rate limited or high demand. Retrying in ${delay}ms... (attempt ${attempt + 1}/${this.maxRetries})`);
+            await this.sleep(delay);
+            continue;
+          }
+          
+          throw new Error(
+            `Failed to generate AI fix: ${errorMessage}. ${attempt < this.maxRetries - 1 ? 'Please try again in a few moments.' : 'Please try again later.'}`
+          );
+        }
+        
         throw new Error(
-          `Failed to generate AI fix from REST API: ${error.response?.data?.error?.message || error.message}`
+          `Failed to generate AI fix: ${error instanceof Error ? error.message : 'Unknown error'}`
         );
       }
-      throw new Error(
-        `Failed to generate AI fix: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
     }
+
+    // If all retries failed
+    throw new Error(
+      `Failed to generate AI fix after ${this.maxRetries} attempts: ${lastError?.message || 'Unknown error'}. The AI service is currently experiencing high demand. Please try again later.`
+    );
   }
 
   /**
