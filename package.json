@@ -1,0 +1,19 @@
+{
+  "name": "devsecops-platform",
+  "version": "1.0.0",
+  "description": "AI-Assisted Proactive Threat Detection and Mitigation DevSecOps Platform",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend",
+    "test": "npm run test --workspaces",
+    "test:backend": "npm run test --workspace=backend",
+    "test:frontend": "npm run test --workspace=frontend"
+  },
+  "keywords": ["devsecops", "security", "vulnerability-scanning"],
+  "author": "",
+  "license": "MIT"
+}
