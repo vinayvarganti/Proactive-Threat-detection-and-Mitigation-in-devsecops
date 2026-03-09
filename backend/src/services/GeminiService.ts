@@ -11,8 +11,8 @@ export interface AIFixProposal {
 }
 
 export class GeminiService {
-  private primaryModel: string = 'gemini-1.5-flash';
-  private fallbackModel: string = 'gemini-1.5-flash-8b'; // Smaller, faster model as fallback
+  private primaryModel: string = 'gemini-2.0-flash-exp';
+  private fallbackModel: string = 'gemini-1.5-flash'; // Stable model as fallback
   private maxRetries: number = 2; // Reduced retries to fail faster
   private baseDelay: number = 2000; // 2 seconds
 
