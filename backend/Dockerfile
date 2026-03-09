@@ -1,5 +1,6 @@
 FROM node:18-bullseye
 
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -30,19 +31,19 @@ RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --
     apt-get install -y trivy && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy package files
+# Copy only backend package files first (for better caching)
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies for build)
-RUN npm ci
+# Install dependencies
+RUN npm install
 
-# Copy application code
+# Copy the rest of the backend code
 COPY . .
 
 # Build TypeScript with production config
-RUN npx tsc -p tsconfig.prod.json
+RUN npm run build
 
-# Remove devDependencies after build to reduce image size
+# Remove devDependencies to reduce image size
 RUN npm prune --production
 
 # Expose port
