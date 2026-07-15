@@ -84,14 +84,17 @@ class AuthService {
   }
 
   /**
-   * Handles OAuth callback by extracting JWT token from URL
+   * Handles OAuth callback by extracting JWT token from URL.
+   * Should be called once at app startup before any auth checks.
    */
   handleOAuthCallback(): { token: string; username: string } | null {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     const username = urlParams.get('username');
+    const authResult = urlParams.get('auth');
 
-    if (token && username) {
+    // Only process if this looks like a successful OAuth callback
+    if (token && username && authResult === 'success') {
       this.setToken(token);
       return { token, username: decodeURIComponent(username) };
     }

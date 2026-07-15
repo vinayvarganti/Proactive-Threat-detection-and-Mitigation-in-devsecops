@@ -14,8 +14,25 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Check authentication status on mount
+  // Handle OAuth callback FIRST before checking auth status
   useEffect(() => {
-    checkAuth();
+    // Check if there's a JWT token in the URL (OAuth callback)
+    const callbackResult = authService.handleOAuthCallback();
+    if (callbackResult) {
+      // Token extracted and stored - clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Mark as authenticated immediately without a server round-trip
+      setIsAuthenticated(true);
+      setLoading(false);
+    } else {
+      // Check for auth error in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('auth') === 'error') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      // No callback token, check existing token via API
+      checkAuth();
+    }
   }, []);
 
   const checkAuth = async () => {

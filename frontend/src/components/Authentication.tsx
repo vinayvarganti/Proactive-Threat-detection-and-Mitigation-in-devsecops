@@ -20,32 +20,16 @@ const Authentication: React.FC<AuthenticationProps> = ({ onAuthChange }) => {
     checkAuthStatus();
   }, []);
 
-  // Handle OAuth callback on mount
+  // Handle OAuth callback - only check for errors here since
+  // App.tsx handles token extraction and storage first
   useEffect(() => {
-    const callbackResult = authService.handleOAuthCallback();
+    const urlParams = new URLSearchParams(window.location.search);
+    const authResult = urlParams.get('auth');
+    const errorMessage = urlParams.get('message');
     
-    if (callbackResult) {
-      // Authentication successful - token stored in localStorage
-      setAuthStatus({
-        isAuthenticated: true,
-        username: callbackResult.username,
-        avatarUrl: null
-      });
-      // Clean up URL
+    if (authResult === 'error') {
+      setError(errorMessage ? decodeURIComponent(errorMessage) : 'Authentication failed');
       window.history.replaceState({}, document.title, window.location.pathname);
-      // Refresh auth status to get full user info
-      checkAuthStatus();
-    } else {
-      // Check for error in URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const authResult = urlParams.get('auth');
-      const errorMessage = urlParams.get('message');
-      
-      if (authResult === 'error') {
-        setError(errorMessage ? decodeURIComponent(errorMessage) : 'Authentication failed');
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
     }
   }, []);
 
