@@ -1,6 +1,6 @@
 # DevSecOps Platform
 
-AI-Assisted Proactive Threat Detection and Mitigation DevSecOps Platform
+ Proactive Threat Detection and Mitigation DevSecOps Platform
 
 ## Overview
 
